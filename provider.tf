@@ -10,7 +10,7 @@ provider "aws" {
 terraform {
   backend "s3" {
     bucket       = "zero-to-hero-terraform-be2164899d3745a399f93b30fc4a0433"
-    key          = "terraform.tfstate"
+    key          = "infra/terraform.tfstate"
     region       = "us-east-1"
     use_lockfile = true
   }
