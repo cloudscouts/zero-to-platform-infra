@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, closed]
     paths:
-      - '**.tf'
+      - '**/*.tf'
   push:
     branches:
       - main
