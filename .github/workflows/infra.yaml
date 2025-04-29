@@ -3,6 +3,8 @@ name: Infracost PR cost estimate
 on:
   pull_request:
     types: [opened, synchronize, closed]
+    paths:
+      - '**/*.tf'
   push:
     branches:
       - main
