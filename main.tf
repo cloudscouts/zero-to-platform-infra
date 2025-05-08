@@ -6,6 +6,8 @@ locals {
   cluster_name    = "bunny-cluster"
   cluster_version = "1.32"
 
+  vpc_name = "bunny-vpc"
+
   tags = {
     Project     = "zero-to-hero-eks"
     Environment = "dev"
@@ -16,10 +18,15 @@ locals {
 
 }
 
+variable "vpc_cird" {
+  type    = string
+  default = "10.0.0.0/16"
+}
+
 module "vpc" {
   source               = "terraform-aws-modules/vpc/aws"
-  name                 = "bunny-vpc"
-  cidr                 = "10.0.0.0/16"
+  name                 = local.vpc_name
+  cidr                 = var.vpc_cird
   azs                  = ["us-east-1a", "us-east-1b", "us-east-1c"]
   private_subnets      = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   public_subnets       = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
@@ -58,6 +65,11 @@ module "eks" {
     karpenter = {
       selectors = [
         { namespace = local.karpenter.namespace }
+      ]
+    }
+    argocd = {
+      selectors = [
+        { namespace = "argocd" }
       ]
     }
   }
