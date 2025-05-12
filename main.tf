@@ -1,12 +1,12 @@
 locals {
   karpenter = {
     namespace = "karpenter"
-    version   = "1.0.2"
+    version   = "1.4.0"
   }
-  cluster_name    = "bunny-cluster"
-  cluster_version = "1.32"
-
-  vpc_name = "bunny-vpc"
+  cluster_name       = "bunny-cluster"
+  cluster_version    = "1.32"
+  node_iam_role_name = module.karpenter.node_iam_role_name
+  vpc_name           = "bunny-vpc"
 
   tags = {
     Project     = "zero-to-hero-eks"
@@ -39,6 +39,7 @@ module "vpc" {
   }
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
+    "karpenter.sh/discovery"          = local.cluster_name
   }
 }
 
@@ -79,4 +80,59 @@ module "eks" {
   })
 
   depends_on = [module.vpc]
+}
+
+
+module "aws-auth" {
+  source  = "terraform-aws-modules/eks/aws//modules/aws-auth"
+  version = "~> 20.36"
+
+  manage_aws_auth_configmap = true
+
+  aws_auth_roles = [
+    {
+      rolearn  = module.karpenter.node_iam_role_arn
+      username = "system:node:{{EC2PrivateDNSName}}"
+      groups   = ["system:bootstrappers", "system:nodes"]
+    }
+  ]
+
+}
+
+
+module "ebs_csi_driver_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "5.55.0"
+
+  role_name_prefix = "${module.eks.cluster_name}-ebs-csi-driver-"
+
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
+    }
+  }
+
+  tags = local.tags
+}
+
+
+resource "null_resource" "update_kubeconfig" {
+  triggers = {
+    cluster_name = module.eks.cluster_name
+    region       = local.region
+  }
+
+  provisioner "local-exec" {
+    command = "aws eks --region ${self.triggers.region} update-kubeconfig --name ${self.triggers.cluster_name} --kubeconfig ~/.kube/${self.triggers.cluster_name}"
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "rm -f ~/.kube/${self.triggers.cluster_name}"
+  }
+
+  depends_on = [module.eks]
 }
