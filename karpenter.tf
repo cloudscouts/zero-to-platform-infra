@@ -23,7 +23,6 @@ module "karpenter" {
 
   depends_on = [
     module.eks,
-    time_sleep.wait_for_eks
   ]
 }
 
@@ -61,7 +60,6 @@ resource "aws_eks_access_entry" "karpenter" {
   depends_on = [
     module.eks,
     module.karpenter,
-    time_sleep.wait_for_eks
   ]
 }
 
@@ -78,10 +76,7 @@ resource "aws_eks_access_policy_association" "karpenter" {
   ]
 }
 
-resource "time_sleep" "wait_for_eks" {
-  depends_on      = [module.eks]
-  create_duration = "30s"
-}
+
 
 resource "time_sleep" "wait_for_karpenter" {
   depends_on = [
@@ -126,7 +121,6 @@ resource "helm_release" "karpenter" {
 
   depends_on = [
     module.karpenter,
-    time_sleep.wait_for_eks,
     time_sleep.wait_for_karpenter
   ]
 }
@@ -156,7 +150,6 @@ spec:
     project: zero-to-platform
 YAML
   depends_on = [
-    time_sleep.wait_for_eks,
     time_sleep.wait_for_karpenter,
     helm_release.karpenter
   ]
@@ -202,7 +195,6 @@ spec:
 
 YAML
   depends_on = [
-    time_sleep.wait_for_eks,
     time_sleep.wait_for_karpenter,
     helm_release.karpenter
   ]

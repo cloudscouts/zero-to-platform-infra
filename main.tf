@@ -16,6 +16,9 @@ locals {
 
   region = "us-east-1"
 
+
+  argocd_version = "v2.9.3"
+
 }
 
 variable "vpc_cird" {
@@ -129,6 +132,9 @@ resource "null_resource" "update_kubeconfig" {
     command = "aws eks --region ${self.triggers.region} update-kubeconfig --name ${self.triggers.cluster_name} --kubeconfig ~/.kube/${self.triggers.cluster_name}"
   }
 
+  # This provisioner executes a local command when the resource is destroyed.
+  # It removes the kubeconfig file associated with the EKS cluster to clean up
+  # local configuration and prevent stale kubeconfig files from persisting.
   provisioner "local-exec" {
     when    = destroy
     command = "rm -f ~/.kube/${self.triggers.cluster_name}"
