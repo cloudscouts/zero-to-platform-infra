@@ -5,13 +5,14 @@ module "karpenter" {
   cluster_name                  = local.cluster_name
   enable_v1_permissions         = true
   namespace                     = local.karpenter.namespace
-  node_iam_role_use_name_prefix = true
-  node_iam_role_name            = "${local.cluster_name}-karpenter"
+  node_iam_role_use_name_prefix = false
+  node_iam_role_name            = local.cluster_name
 
-  create_pod_identity_association = false
+  create_pod_identity_association = true
   enable_irsa                     = true
   irsa_oidc_provider_arn          = module.eks.oidc_provider_arn
   tags                            = local.tags
+
 
   # Disable access entry creation in the module
   create_access_entry = false
@@ -27,7 +28,6 @@ module "karpenter" {
 }
 
 
-# Add IAM policy for Karpenter controller to allow PassRole
 resource "aws_iam_role_policy" "karpenter_pass_role" {
   name = "karpenter-pass-role"
   role = module.karpenter.iam_role_name
@@ -76,17 +76,6 @@ resource "aws_eks_access_policy_association" "karpenter" {
   ]
 }
 
-
-
-resource "time_sleep" "wait_for_karpenter" {
-  depends_on = [
-    module.karpenter,
-    aws_eks_access_entry.karpenter,
-    aws_eks_access_policy_association.karpenter
-  ]
-  create_duration = "30s"
-}
-
 resource "helm_release" "karpenter" {
   name                = "karpenter"
   namespace           = local.karpenter.namespace
@@ -100,14 +89,19 @@ resource "helm_release" "karpenter" {
 
   values = [
     <<-EOT
-    dnsPolicy: Default
+    replicas: 1
+    nodeSelector:
+      karpenter.sh/controller: 'true'
     settings:
       clusterName: ${module.eks.cluster_name}
       clusterEndpoint: ${module.eks.cluster_endpoint}
       interruptionQueue: ${module.karpenter.queue_name}
-    serviceAccount:
-      annotations:
-        eks.amazonaws.com/role-arn: ${module.karpenter.iam_role_arn}
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - key: karpenter.sh/controller
+        operator: Exists
+        effect: NoSchedule
     webhook:
       enabled: false
     EOT
@@ -119,13 +113,7 @@ resource "helm_release" "karpenter" {
     ]
   }
 
-  depends_on = [
-    module.karpenter,
-    time_sleep.wait_for_karpenter
-  ]
 }
-
-
 
 resource "kubectl_manifest" "karpenter_default_ec2_node_class" {
   yaml_body = <<YAML
@@ -136,7 +124,7 @@ metadata:
 spec:
   role: "${local.node_iam_role_name}"
   amiSelectorTerms: 
-  - alias: al2@latest
+  - alias: bottlerocket@latest
   securityGroupSelectorTerms:
   - tags:
       karpenter.sh/discovery: ${local.cluster_name}
@@ -149,10 +137,6 @@ spec:
     karpenter.sh/discovery: ${local.cluster_name}
     project: zero-to-platform
 YAML
-  depends_on = [
-    time_sleep.wait_for_karpenter,
-    helm_release.karpenter
-  ]
 }
 
 resource "kubectl_manifest" "karpenter_default_node_pool" {
@@ -173,7 +157,7 @@ spec:
           values: ["amd64", "arm64"]
         - key: "karpenter.k8s.aws/instance-cpu"
           operator: In
-          values: ["4", "8"]
+          values: ["2","4", "8"]
         - key: karpenter.sh/capacity-type
           operator: In
           values: ["spot"]
@@ -194,9 +178,4 @@ spec:
     consolidateAfter: 1m
 
 YAML
-  depends_on = [
-    time_sleep.wait_for_karpenter,
-    helm_release.karpenter
-  ]
 }
-
